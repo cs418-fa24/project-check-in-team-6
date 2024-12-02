@@ -16,17 +16,16 @@ def plot_feature_importance(features_df: pd.DataFrame,
 
     return fig
 
-
+"""
+    Calculates evaluation metrics for multiple models and visualizes them.
+    tuple: Contains the metrics DataFrame and the Plotly figure.
+"""
 def evaluation_metrics(predictions_df: pd.DataFrame, 
                        model_columns: list,
                        true_label_column: str,
                        display_plot: bool = True,
                        plot_width: int = 700, 
                        plot_height: int = 400) -> tuple:
-    """
-    Calculates evaluation metrics for multiple models and visualizes them.
-        tuple: Contains the metrics DataFrame and the Plotly figure.
-    """
     # List of evaluation functions
     eval_metrics = [accuracy_score, balanced_accuracy_score, precision_score, recall_score, f1_score, matthews_corrcoef, roc_auc_score]
     results = {}
@@ -46,3 +45,51 @@ def evaluation_metrics(predictions_df: pd.DataFrame,
     return metrics_df
 
 
+def plot_confusion_matrix(y_true: list, 
+                          y_pred: list, 
+                          class_names: list = ['Normal', 'Recession'], 
+                          title: str = 'RF',
+                          width: int = 450,
+                          height: int = 450,
+                          annotation_text_size: int = 14) -> go.Figure:
+    """
+    Create an annotated heatmap of the confusion matrix.
+    
+    Parameters:
+        y_true (list): True class labels.
+        y_pred (list): Predicted class labels.
+        class_names (list, optional): Names of classes. Default is ['Normal', 'Recession'].
+        title (str, optional): Plot title. Default is 'RF'.
+        width (int, optional): Width of the plot. Default is 450.
+        height (int, optional): Height of the plot. Default is 450.
+        annotation_text_size (int, optional): Font size of annotations. Default is 14.
+    
+    Returns:
+        go.Figure: A Plotly figure representing the annotated heatmap.
+    """
+    # Compute confusion matrix
+    cm = confusion_matrix(y_true, y_pred)
+    
+    # Assign class names
+    x = class_names
+    y = class_names
+
+    # Convert confusion matrix elements to strings for annotations
+    cm_text = [[str(y) for y in x] for x in cm]
+
+    # Create a figure for annotated heatmap
+    fig = ff.create_annotated_heatmap(cm, x=x, y=y, annotation_text=cm_text, colorscale='Blues')
+    
+    # Adjust x and y axis labels and title
+    fig.update_layout(xaxis=dict(title="<b> Predicted Class </b>", side="bottom"), 
+                      yaxis=dict(title="<b> Actual Class </b>"),
+                      title_text=f'<b> {title} </b>', title_x=0.53)
+    
+    # Set figure size and theme
+    fig.update_layout(autosize=False, width=width, height=height, template='simple_white')
+    
+    # Change annotation text size
+    for i in range(len(fig.layout.annotations)):
+        fig.layout.annotations[i].font.size = annotation_text_size
+        
+    return fig
