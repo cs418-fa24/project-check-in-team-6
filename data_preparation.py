@@ -1,5 +1,3 @@
-# Data Preparation
-
 
 """
 
@@ -15,14 +13,13 @@
      - Adding lag features to the DataFrame for specified lag periods (`add_lag_columns`).
      - Each transformation can include operations like differencing, applying log transformations, and percentage change calculations.
 
-3. **MarketRegimeAnalyzer Class**:
+3. **TrendFiltering Class**:
    - This class focuses on analyzing market data to identify market regimes (e.g., recessions or expansions):
      - The `_compute_returns` method calculates daily returns based on a price column (default is 'Close').
      - The `apply_l1_filter` method applies an L1 trend filtering algorithm to the returns data, creating a `MarketRegime` column. This column labels market regimes (0 for expansion and 1 for recession/crash periods) based on the trend filtering results.
 
 The classes allow for easy data cleaning, feature engineering, and analysis of market regimes, which is useful for financial and economic data analysis.
 """
-
 
 
 import pandas as pd
@@ -32,163 +29,86 @@ import warnings
 
 warnings.filterwarnings('ignore')
 
-class DataCleaner:
+class DataCleaning:
     """
         remove_columns_with_nulls(): Remove columns with more than max_null_count null values.
         remove_rows_with_nulls(): Remove rows with more than max_null_count null values.
         impute_missing_values(): Impute missing values using forward fill.
     """
 
-    def __init__(self, df):
+    def __init__(self, data):
         """
 
         df (): The input DataFrame for cleaning.
         """
-        self.df = df
+        self.data = data
 
-    def remove_columns_with_nulls(self, max_null_count, inplace=True):
+    def remove_null_features(self, max_null, inplace=True):
         """
         pd.DataFrame: Cleaned DataFrame with valid columns.
         """
-        null_summary = self.df.isnull().sum()
-        valid_cols = null_summary[null_summary <= max_null_count].index.tolist()
-        cleaned_df = self.df[valid_cols]
+        count_null = self.data.isnull().sum()
+        selected_features = count_null[count_null <= max_null].index.tolist()
+        data_after_cleaning = self.data[selected_features]
 
         if inplace:
-            self.df = cleaned_df
+            self.data = data_after_cleaning
 
-        return cleaned_df
+        return data_after_cleaning
 
-    def remove_rows_with_nulls(self, max_null_count, inplace=True):
+    def remove_null_rows(self, max_null, inplace=True):
         """
         pd.DataFrame: Cleaned DataFrame with valid rows.
         """
-        cleaned_df = self.df[self.df.isnull().sum(axis=1) <= max_null_count]
+        data_after_cleaning = self.data[self.data.isnull().sum(axis=1) <= max_null]
 
         if inplace:
-            self.df = cleaned_df
+            self.data = data_after_cleaning
 
-        return cleaned_df
+        return data_after_cleaning
 
-    def impute_missing_values(self, inplace=True):
+    def fill_null_obs(self, inplace=True):
         """
         pd.DataFrame: DataFrame with forward-filled missing values.
         """
-        filled_df = self.df.fillna(method='ffill', inplace=False)
+        # Forward fill null observations
+        null_data = self.data.fillna(method='ffill', inplace=False)
 
         if inplace:
-            self.df = filled_df
+            self.data = null_data
 
-        return filled_df
-
-
-class FeatureEngineer:
+        return null_data
+    
+    
+class FeatureEngineering:
     """
     apply_feature_transformations(): Apply predefined transformations to the features.
     add_lag_columns(): Add lag features for the specified lag periods.
     """
 
-    def __init__(self, df):
-        self.df = df
-        self.transformation_map = None
 
-    def _apply_single_transformation(self, col, transformation_code):
+    def __init__(self, data):
+        self.data = data
+        self.transformation_codes = None
+
+    def __tranfrom_feat__(self, feat_col, trans_code):
         """
         pd.Series: The transformed feature column.
         """
-        if transformation_code == 1:
-            return col
-        
-        elif transformation_code == 2:
-            return col.diff()
-        
-        elif transformation_code == 3:
-            return col.diff(periods=2)
-        
-        elif transformation_code == 4:
-            return col.apply(np.log)
-        
-        elif transformation_code == 5:
-            return col.apply(np.log).diff(periods=2)
-        
-        elif transformation_code == 6:
-            return col.apply(np.log).diff(periods=2)
-        
-        elif transformation_code == 7:
-            return col.pct_change().diff()
-
-    def apply_feature_transformations(self):
-
-        transformation_map = {}
-
-        transformed_df = pd.DataFrame(columns=self.df.columns)
-        
-        for col in self.df.columns:
-            transformed_df[col] = self.df[col].iloc[1:]
-            transformation_map[col] = self.df[col].iloc[0]
-
-        self.df = transformed_df
-        self.transformation_map = transformation_map
-
-        self.df['Date'] = pd.to_datetime(self.df['Date'])
-        
-        result_df = pd.DataFrame(columns=self.df.columns)
-        for col in self.df.columns:
-            if col == 'Date':
-                result_df[col] = self.df[col]
-            else:
-                result_df[col] = self._apply_single_transformation(self.df[col], transformation_map[col])
-
-        self.df = result_df
-
-    def add_lag_columns(self, lag_values):
-        """
-        pd.DataFrame: DataFrame with added lagged features.
-        """
-        for col in self.df.drop(['Date'], axis=1):
-            for lag in lag_values:
-                self.df[f'{col} {lag}M Lag'] = self.df[col].shift(lag).ffill().values
-        self.df.dropna(axis=0, inplace=True)
-        return self.df
-
-
-class MarketRegimeAnalyzer:
-
-    def __init__(self, market_df):
-
-        self.market_df = market_df
-    
-    def _compute_returns(self, price_column='Close'):
-        
-        self.market_df['Returns'] = self.market_df[price_column].pct_change()
-        self.market_df.dropna(inplace=True)
-        self.market_df = self.market_df[['Close', 'Returns']]
-        
-    def apply_l1_filter(self, lambda_val=0.16):
-        """
-        pd.DataFrame: DataFrame with market regime labels.
-        """
-        self._compute_returns()
-        returns_values = self.market_df['Returns'].values
-        
-        n = np.size(returns_values)
-        reshaped_returns = returns_values.reshape(n)
-        
-        D_full = np.diag([1]*n) - np.diag([1]*(n-1), 1)
-        D = D_full[0:(n-1), :]
-        
-        beta_var = cp.Variable(n)
-        lambda_param = cp.Parameter(nonneg=True)
-        
-        def trend_filter_objective(x_vals, beta_var, lambda_param):
-            return cp.norm(x_vals - beta_var, 2)**2 + lambda_param * cp.norm(cp.matmul(D, beta_var), 1)
-        
-        problem = cp.Problem(cp.Minimize(trend_filter_objective(reshaped_returns, beta_var, lambda_param)))
-        lambda_param.value = lambda_val
-        problem.solve()
-        
-        trend_filter_betas = pd.DataFrame({'TrendBeta': beta_var.value}, index=self.market_df.index)
-        trend_filter_betas['MarketRegime'] = trend_filter_betas['TrendBeta'].apply(lambda x: 0 if x > 0 else 1)
-        self.market_df = pd.concat([self.market_df, trend_filter_betas], axis=1)  
-        
-        return self.market_df[['MarketRegime']]
+        if trans_code == 1:
+            return feat_col
+        elif trans_code == 2:
+            return feat_col.diff()
+        elif trans_code == 3:
+            return feat_col.diff(periods=2)
+        elif trans_code == 4:
+            return feat_col.apply(np.log)
+        elif trans_code == 5:
+            feat_col = feat_col.apply(np.log).diff(periods=2)
+            return feat_col
+        elif trans_code == 6:
+            feat_col = feat_col.apply(np.log).diff(periods=2)
+            return feat_col
+        elif trans_code == 7:
+            feat_col = feat_col.pct_change().diff()
+            return feat_col
