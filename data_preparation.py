@@ -112,3 +112,68 @@ class FeatureEngineering:
         elif trans_code == 7:
             feat_col = feat_col.pct_change().diff()
             return feat_col
+
+
+    def transform_features(self):
+        transform_code = {}
+        df_tmp = pd.DataFrame(columns=self.data.columns)
+        for column in self.data.columns:
+            df_tmp[column] = self.data[column].iloc[1:] 
+            transform_code[column] = self.data[column].iloc[0]
+        
+        self.data = df_tmp
+        self.transform_code = transform_code
+        
+        df_tmp['Date'] = pd.to_datetime(df_tmp['Date'])
+        
+        transform_data = pd.DataFrame(columns=self.data.columns)
+        for column in self.data.columns:
+            if column == 'Date':
+                transform_data[column] = self.data[column]
+            else:
+                transform_data[column] = self.__tranfrom_feat__(self.data[column], transform_code[column])
+        self.data = transform_data
+
+    def add_lagged_features(self, lag_values):
+        for column in self.data.drop(['Date'], axis=1):
+            for n in lag_values:
+                self.data['{} {}M Lag'.format(column, n)] = self.data[column].shift(n).ffill().values
+        self.data.dropna(axis=0, inplace=True)
+        return self.data
+
+
+class TrendFiltering:
+
+
+    def __init__(self, mkt_data):
+        self.mkt_data = mkt_data
+    
+    def __calc_return__(self, data_col='Close'):
+        self.mkt_data['Return'] = self.mkt_data[data_col].pct_change()
+        self.mkt_data.dropna(inplace=True)
+        self.mkt_data = self.mkt_data[['Close', 'Return']]
+        
+    def l1_trend_filter(self, lambda_val=0.16):
+        """
+        pd.DataFrame: DataFrame with market regime labels.
+        """
+        self.__calc_return__()
+        ret_series = self.mkt_data['Return'].values
+        n = np.size(ret_series)
+        x_ret = ret_series.reshape(n)
+        Dfull = np.diag([1]*n) - np.diag([1]*(n-1), 1)
+        D = Dfull[0:(n-1),]
+        beta = cp.Variable(n)
+        lambd = cp.Parameter(nonneg=True)
+        
+        def tf_obj(x, beta, lambd):
+            return cp.norm(x - beta, 2)**2 + lambd * cp.norm(cp.matmul(D, beta), 1)
+        
+        problem = cp.Problem(cp.Minimize(tf_obj(x_ret, beta, lambd)))
+        lambd.value = lambda_val
+        problem.solve()
+        betas_df = pd.DataFrame({'TFBeta': beta.value}, index=self.mkt_data.index)
+        betas_df['MktRegime'] = betas_df['TFBeta'].apply(lambda x: 0 if x > 0 else 1)
+        self.mkt_data = pd.concat([self.mkt_data, betas_df], axis=1)  
+        
+        return self.mkt_data[['MktRegime']]
